@@ -995,6 +995,8 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                 }
             } catch (NullPointerException e) {
                 Log.e(TAG, e.getMessage(), e);
+            } catch (IndexOutOfBoundsException e) {
+                Log.e(TAG, e.getMessage(), e);
             }
             editable.setSpan(chip, tokenStart, tokenEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             // Add this chip to the list of entries "to replace"
