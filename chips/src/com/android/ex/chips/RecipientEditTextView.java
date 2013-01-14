@@ -2325,7 +2325,11 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                     int end = getSelectionEnd();
                     Editable editable = getText();
                     if (start >= 0 && end >= 0 && start != end) {
-                        editable.append(paste, start, end);
+                        if (start > end) {
+                            editable.replace(end, start, paste);
+                        } else {
+                            editable.replace(start, end, paste);
+                        }
                     } else {
                         editable.insert(end, paste);
                     }
