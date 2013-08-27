@@ -974,8 +974,6 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                 }
             } catch (NullPointerException e) {
                 Log.e(TAG, e.getMessage(), e);
-            } catch (IndexOutOfBoundsException e) {
-                Log.e(TAG, e.getMessage(), e);
             }
             editable.setSpan(chip, tokenStart, tokenEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             // Add this chip to the list of entries "to replace"
@@ -2287,11 +2285,7 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                     int end = getSelectionEnd();
                     Editable editable = getText();
                     if (start >= 0 && end >= 0 && start != end) {
-                        if (start > end) {
-                            editable.replace(end, start, paste);
-                        } else {
-                            editable.replace(start, end, paste);
-                        }
+                        editable.append(paste, start, end);
                     } else {
                         editable.insert(end, paste);
                     }
@@ -2329,12 +2323,12 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
         int originalTokenStart = mTokenizer.findTokenStart(text, getSelectionEnd());
         String lastAddress = text.substring(originalTokenStart);
         int tokenStart = originalTokenStart;
-        int prevTokenStart = 0;
+        int prevTokenStart = tokenStart;
         RecipientChip findChip = null;
         ArrayList<RecipientChip> created = new ArrayList<RecipientChip>();
         if (tokenStart != 0) {
             // There are things before this!
-            while (tokenStart != 0 && findChip == null && tokenStart != prevTokenStart) {
+            while (tokenStart != 0 && findChip == null) {
                 prevTokenStart = tokenStart;
                 tokenStart = mTokenizer.findTokenStart(text, tokenStart);
                 findChip = findChip(tokenStart);
