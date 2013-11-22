@@ -32,10 +32,10 @@ import android.os.Message;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Photo;
 import android.provider.ContactsContract.Directory;
+import android.support.v4.util.LruCache;
 import android.text.TextUtils;
 import android.text.util.Rfc822Token;
 import android.util.Log;
-import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -46,6 +46,9 @@ import android.widget.Filterable;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -140,7 +143,7 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
     }
 
     /** Used to temporarily hold results in Cursor objects. */
-    private static class TemporaryEntry {
+    protected static class TemporaryEntry {
         public final String displayName;
         public final String destination;
         public final int destinationType;
@@ -149,6 +152,25 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
         public final long dataId;
         public final String thumbnailUriString;
         public final int displayNameSource;
+
+        public TemporaryEntry(
+                String displayName,
+                String destination,
+                int destinationType,
+                String destinationLabel,
+                long contactId,
+                long dataId,
+                String thumbnailUriString,
+                int displayNameSource) {
+            this.displayName = displayName;
+            this.destination = destination;
+            this.destinationType = destinationType;
+            this.destinationLabel = destinationLabel;
+            this.contactId = contactId;
+            this.dataId = dataId;
+            this.thumbnailUriString = thumbnailUriString;
+            this.displayNameSource = displayNameSource;
+        }
 
         public TemporaryEntry(Cursor cursor) {
             this.displayName = cursor.getString(Queries.Query.NAME);
@@ -322,7 +344,7 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
     /**
      * An asynchronous filter that performs search in a particular directory.
      */
-    private final class DirectoryFilter extends Filter {
+    protected class DirectoryFilter extends Filter {
         private final DirectorySearchParams mParams;
         private int mLimit;
 
@@ -536,6 +558,10 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
         }
     }
 
+    public Context getContext() {
+        return mContext;
+    }
+
     public int getQueryType() {
         return mQueryType;
     }
@@ -552,6 +578,16 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
     @Override
     public Filter getFilter() {
         return new DefaultFilter();
+    }
+
+    /**
+     * An extesion to {@link RecipientAlternatesAdapter#getMatchingRecipients} that allows
+     * additional sources of contacts to be considered as matching recipients.
+     * @param addresses A set of addresses to be matched
+     * @return A list of matches or null if none found
+     */
+    public Map<String, RecipientEntry> getMatchingRecipients(Set<String> addresses) {
+        return null;
     }
 
     public static List<DirectorySearchParams> setupOtherDirectories(Context context,
@@ -612,7 +648,7 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
      * Starts search in other directories using {@link Filter}. Results will be handled in
      * {@link DirectoryFilter}.
      */
-    private void startSearchOtherDirectories(
+    protected void startSearchOtherDirectories(
             CharSequence constraint, List<DirectorySearchParams> paramsList, int limit) {
         final int count = paramsList.size();
         // Note: skipping the default partition (index 0), which has already been loaded
@@ -729,7 +765,7 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
         mTempEntries = null;
     }
 
-    private List<RecipientEntry> getEntries() {
+    protected List<RecipientEntry> getEntries() {
         return mTempEntries != null ? mTempEntries : mEntries;
     }
 
@@ -750,31 +786,61 @@ public abstract class BaseRecipientAdapter extends BaseAdapter implements Filter
         }
     }
 
+    // For reading photos for directory contacts, this is the chunksize for
+    // copying from the inputstream to the output stream.
+    private static final int BUFFER_SIZE = 1024*16;
+
     private void fetchPhotoAsync(final RecipientEntry entry, final Uri photoThumbnailUri) {
-        final AsyncTask<Void, Void, Void> photoLoadTask = new AsyncTask<Void, Void, Void>() {
+        final AsyncTask<Void, Void, byte[]> photoLoadTask = new AsyncTask<Void, Void, byte[]>() {
             @Override
-            protected Void doInBackground(Void... params) {
+            protected byte[] doInBackground(Void... params) {
+                // First try running a query. Images for local contacts are
+                // loaded by sending a query to the ContactsProvider.
                 final Cursor photoCursor = mContentResolver.query(
                         photoThumbnailUri, PhotoQuery.PROJECTION, null, null, null);
                 if (photoCursor != null) {
                     try {
                         if (photoCursor.moveToFirst()) {
-                            final byte[] photoBytes = photoCursor.getBlob(PhotoQuery.PHOTO);
-                            entry.setPhotoBytes(photoBytes);
-
-                            mHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    mPhotoCacheMap.put(photoThumbnailUri, photoBytes);
-                                    notifyDataSetChanged();
-                                }
-                            });
+                            return photoCursor.getBlob(PhotoQuery.PHOTO);
                         }
                     } finally {
                         photoCursor.close();
                     }
+                } else {
+                    // If the query fails, try streaming the URI directly.
+                    // For remote directory images, this URI resolves to the
+                    // directory provider and the images are loaded by sending
+                    // an openFile call to the provider.
+                    try {
+                        InputStream is = mContentResolver.openInputStream(
+                                photoThumbnailUri);
+                        if (is != null) {
+                            byte[] buffer = new byte[BUFFER_SIZE];
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            try {
+                                int size;
+                                while ((size = is.read(buffer)) != -1) {
+                                    baos.write(buffer, 0, size);
+                                }
+                            } finally {
+                                is.close();
+                            }
+                            return baos.toByteArray();
+                        }
+                    } catch (IOException ex) {
+                        // ignore
+                    }
                 }
                 return null;
+            }
+
+            @Override
+            protected void onPostExecute(final byte[] photoBytes) {
+                entry.setPhotoBytes(photoBytes);
+                if (photoBytes != null) {
+                    mPhotoCacheMap.put(photoThumbnailUri, photoBytes);
+                    notifyDataSetChanged();
+                }
             }
         };
         photoLoadTask.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);

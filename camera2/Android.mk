@@ -1,4 +1,4 @@
-# Copyright (C) 2009 The Android Open Source Project
+# Copyright 2013 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-LOCAL_PATH := $(call my-dir)
-
-# Note: the source code is in java/, not src/, because this code is also part of
-# the framework library, and build/core/pathmap.mk expects a java/ subdirectory.
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := android-common-carousel
-LOCAL_SRC_FILES := \
-     $(call all-java-files-under, java) \
-     $(call all-logtags-files-under, java) \
-     $(call all-renderscript-files-under, java)
-
-include $(BUILD_STATIC_JAVA_LIBRARY)
+include $(call all-subdir-makefiles)
