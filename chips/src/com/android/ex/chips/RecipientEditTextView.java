@@ -995,8 +995,6 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                 }
             } catch (NullPointerException e) {
                 Log.e(TAG, e.getMessage(), e);
-            } catch (IndexOutOfBoundsException e) {
-                Log.e(TAG, e.getMessage(), e);
             }
             editable.setSpan(chip, tokenStart, tokenEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             // Add this chip to the list of entries "to replace"
@@ -2358,11 +2356,7 @@ public class RecipientEditTextView extends MultiAutoCompleteTextView implements
                     int end = getSelectionEnd();
                     Editable editable = getText();
                     if (start >= 0 && end >= 0 && start != end) {
-                        if (start > end) {
-                            editable.replace(end, start, paste);
-                        } else {
-                            editable.replace(start, end, paste);
-                        }
+                        editable.append(paste, start, end);
                     } else {
                         editable.insert(end, paste);
                     }
